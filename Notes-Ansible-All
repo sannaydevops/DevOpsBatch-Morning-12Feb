@@ -1,0 +1,290 @@
+Ansible Notes
+
+Create 2 instances and start them
+
+Set up on ACM:
+********************************
+
+Step1: 
+**************
+go to vim /etc/ssh/sshd_config
+
+	i
+scroll down
+remove the # for  password Authentication Yes
+Add # for 	  password Authentication No
+
+:wq!
+
+Step 2:
+**************
+Create password for ec2-user
+
+# passwd ec2-user
+Newpassword:
+ConfirmPassword:
+
+********************
+Step 3:
+***********
+
+Add ec2-user in sudoers files and give all permission
+
+# vim /etc/sudoers
+
+i
+scroll down
+
+under root add like this
+
+ec2-user ALL=NOPASSWD: ALL
+
+**************************
+Step 4:
+
+Restart your sshd connection
+
+# systemctl restart sshd
+
+*******************
+
+Repeat all the 4 steps on Host machine also and restart the sshd connection on host machine.
+
+************************
+
+Install Ansible :
+
+Step 1:
+*************
+
+# yum list | grep ansible  // you will not find ansible package as default in yum
+
+So install epel replositories and it will ass ansible to yum repository
+
+
+	# yum install epel-release
+
+// copy the command sudo amazon-linux-extras install epel and execute it
+
+	# sudo amazon-linux-extras install epel
+
+give y
+
+Complete!
+
+You will ansible package is now available with yum
+
+	# yum list | grep ansible
+
+//ansible will be available (wait for few seconds)
+
+
+	# yum install ansible
+
+press y
+again press y
+Complete!
+
+	# ansible --version
+
+version of ansible isntalled will be displayed.
+
+*****************************************
+CREATE INVENTORY ON ACM and ADD Host details
+*****************************************
+
+# vim /etc/ansible/hosts
+
+Scroll down to end and add
+
+[webservers]
+paste private ip of host ==> 172.31.39.169
+
+:wq!
+
+***********************************************
+
+OPEN SECURE SHELL CONNECTION 
+
+***********************************************
+
+Step 1: change to ec2-user
+
+	# su - ec2-user
+
+	# ssh-keygen
+
+press enter
+press enter
+press enter
+
+ssh key will be generated
+
+Step 2: copy key on to the host
+
+	# ssh-copy-id -i ec2-user@private ip of host
+
+press yes
+enter passowrd ==>
+
+ssh connection will be done
+In the message we will have a command to loginto the host from ACM, execute it
+
+	# ssh 'ec2-user@172.31.35.169'
+
+we will be connected to the host
+
+exit
+back to ACM
+
+*****************************************
+Modules in ANSIBLE
+
+1. adhoc ping command
+
+# ansible -m ping webservers
+
+response will be a pong from all hosts under webservers
+
+
+Module2 : command
+
+# ansible -m command -a "uptime" webservers
+
+will give the uptime of hosts in webservers
+
+
+To chekc all modules in ansible
+
+# ansible-doc -l
+
+
+
+
+Playbooks:
+
+- name: Deploy war file on tomcat
+  hosts: webserver
+  become: true
+  become_user: root
+  vars_files:
+   - variables.yml
+  tasks:
+  - name: Install git on the server
+    package: name={{pkg_name1}} state=present
+  - name: Install package tomcat on server
+    package: name={{pkg_name}} state=present
+  - name: Start tomcat Server
+    service: name={{pkg_name}} state=started
+  - name: Deploy the war file on tomcat server
+    get_url:
+     url={{url}}
+     dest={{dest}}
+    notify:
+     - Restart tomcat server
+     - Print deployment message
+  handlers:
+  - name: Print deployment message
+    debug: msg="Deployment complete"
+  - name: Restart tomcat server
+    service: name={{pkg_name}} state=restarted
+
+variables.yml
+
+   pkg_name: tomcat
+   url: https://tomcat.apache.org/tomcat-7.0-doc/appdev/sample/sample.war
+   dest: /usr/share/tomcat/webapps
+
+
+==========
+- name: Build Image and docker containers
+  hosts: webserver
+  become: true
+  become_user: root
+  tasks:
+  - name: Install packages on host server
+    package: name={{item}} state=present
+    loop:
+     - git
+     - docker
+  - name: Start docker service
+    service: name=docker state=started
+  - name: clone a repo on host server
+    git:
+     repo=https://github.com/Sonal0409/AnsibleDockerdemo.git
+     dest=/tmp/myrepo
+  - name: build the dockerfile
+    command: chdir=/tmp/myrepo docker build -t myimage:ansible .
+
+====================
+
+Demo1: Jinja2 template:
+=====================
+
+mkdir mytemplatedemo
+cd mytemplatedemo
+
+vim myapp.conf.j2
+
+local_ip = {{ ansible_default_ipv4["address"] }}
+host_nodename = {{ ansible_nodename }}
+host_OS_family = {{ ansible_os_family }}
+host_domain = {{ ansible_domain }}
+
+save the file
+
+vim playbookdemo1.yml
+
+- hosts: webserver
+  become: true
+  tasks:
+  - name: install my_app configuration file from template
+    template:
+     src: myapp.conf.j2
+     dest: /etc/myapp.conf
+
+Save the file
+
+
+# ansible-playbook -i /home/ansiuser/myinventory playbookdemo1.yml
+
+Demo2 of jinja 2:
+====================
+
+
+vim index.html.j2
+
+This is jinja template
+
+The apache2 webserver is running on  {{ansible_hostname}}
+
+ Conditional statement
+
+{% for item in system_admin %}
+
+The system admin is : {{item}}
+
+{% endfor %}
+
+save the file
+
+===========================
+
+vim playbookdemo.yml
+
+- hosts: webserver
+  become: true
+  vars:
+   system_admin:
+    - admin@gmail.com
+    - sonal@gmail.com
+    - ansible@gmail.com
+  tasks:
+  - name: Install apache
+    package: name=apache2 state=present
+  - name: restart apache
+    service: name=apache2 state=started
+  - name: copy index file
+    template: src=index.html.j2 dest=/var/www/html/index.html
+
+Save the file.
